@@ -7,3 +7,7 @@ humob_all_cities_v2_normalized.parquet
 humob_sample_normalized.parquet
 
 
+centers_A_128.npy
+humob_model_A.pt
+humob_results.png
+test_centers.npy
