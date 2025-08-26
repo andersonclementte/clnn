@@ -33,6 +33,9 @@ class CoordLSTM(nn.Module):
             bidirectional=bidirectional,
             dropout=dropout if num_layers > 1 else 0.0
         )
+        
+        # 🆕 ÚNICA ADIÇÃO: propriedade para compatibilidade com o pipeline
+        self.output_dim = hidden_size * self.num_directions
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
