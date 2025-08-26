@@ -9,16 +9,16 @@ class ExternalInformationFusionNormalized(nn.Module):
     
     Entradas (todas normalizadas):
     --------
-    uid     : (B,)   torch.LongTensor  – id do usuário [0 … n_users-1]
-    d_norm  : (B,)   torch.FloatTensor – dia normalizado [0,1]
-    t_sin   : (B,)   torch.FloatTensor – timeslot sin [-1,1]
-    t_cos   : (B,)   torch.FloatTensor – timeslot cos [-1,1]
-    city    : (B,)   torch.LongTensor  – cidade codificada [0,1,2,3]
-    poi_norm: (B,85) torch.FloatTensor – POIs normalizados [0,1]
+    uid     : (B,)   torch.LongTensor  — id do usuário [0 … n_users-1]
+    d_norm  : (B,)   torch.FloatTensor — dia normalizado [0,1]
+    t_sin   : (B,)   torch.FloatTensor — timeslot sin [-1,1]
+    t_cos   : (B,)   torch.FloatTensor — timeslot cos [-1,1]
+    city    : (B,)   torch.LongTensor  — cidade codificada [0,1,2,3]
+    poi_norm: (B,85) torch.FloatTensor — POIs normalizados [0,1]
 
     Saída:
     -----
-    fused : (B, out_dim) torch.FloatTensor – concat de todos os embeddings + projeções
+    fused : (B, out_dim) torch.FloatTensor — concat de todos os embeddings + projeções
     """
 
     def __init__(
@@ -124,3 +124,83 @@ class ExternalInformationDense(nn.Module):
         x = self.layer_norm(x)
         x = self.dropout(x)
         return F.relu(self.fc(x))
+
+
+# CLASSE ADICIONAL: Para compatibilidade com código antigo
+class ExternalInformationFusionDTPC(ExternalInformationFusionNormalized):
+    """
+    Alias para compatibilidade com código antigo.
+    Redireciona para ExternalInformationFusionNormalized.
+    """
+    def __init__(self, *args, **kwargs):
+        # Remove parâmetros antigos que não são mais usados
+        kwargs.pop('disable_poi_debug', None)
+        kwargs.pop('n_days', None)  # Era usado antes, agora d_norm é [0,1]
+        kwargs.pop('n_slots', None)  # Era usado antes, agora t_sin/t_cos
+        kwargs.pop('emb_dim', None)  # Renomeado para user_emb_dim
+        kwargs.pop('poi_in_dim', None)  # Fixo em 85
+        
+        # Mapeia parâmetros antigos para novos
+        if 'emb_dim' in kwargs:
+            kwargs['user_emb_dim'] = kwargs.pop('emb_dim')
+        if 'poi_out_dim' not in kwargs:
+            kwargs['poi_out_dim'] = 10  # Valor padrão
+            
+        super().__init__(*args, **kwargs)
+        print("⚠️  ExternalInformationFusionDTPC está depreciado. Use ExternalInformationFusionNormalized.")
+
+
+# FUNÇÕES DE UTILIDADE PARA DEBUG
+def test_external_information():
+    """Testa as classes de External Information com dados de exemplo."""
+    print("🧪 Testando ExternalInformationFusionNormalized...")
+    
+    # Parâmetros do teste
+    batch_size = 16
+    n_users = 1000
+    n_cities = 4
+    
+    # Dados de exemplo (normalizados)
+    uid = torch.randint(0, n_users, (batch_size,))
+    d_norm = torch.rand(batch_size)  # [0,1]
+    t_sin = torch.sin(torch.rand(batch_size) * 2 * torch.pi)  # [-1,1]  
+    t_cos = torch.cos(torch.rand(batch_size) * 2 * torch.pi)  # [-1,1]
+    city = torch.randint(0, n_cities, (batch_size,))
+    poi_norm = torch.rand(batch_size, 85)  # [0,1]
+    
+    # Instancia módulos
+    fusion = ExternalInformationFusionNormalized(
+        n_users=n_users,
+        n_cities=n_cities,
+        user_emb_dim=8,
+        city_emb_dim=4,
+        temporal_dim=6,
+        poi_out_dim=8
+    )
+    
+    dense = ExternalInformationDense(
+        in_dim=fusion.out_dim,
+        out_dim=16
+    )
+    
+    # Forward pass
+    with torch.no_grad():
+        fused = fusion(uid, d_norm, t_sin, t_cos, city, poi_norm)
+        reduced = dense(fused)
+        
+        print(f"✅ Fusion output shape: {fused.shape}")
+        print(f"✅ Dense output shape: {reduced.shape}")
+        print(f"✅ Fusion out_dim: {fusion.out_dim}")
+        print(f"✅ Data ranges:")
+        print(f"   d_norm: [{d_norm.min():.3f}, {d_norm.max():.3f}]")
+        print(f"   t_sin: [{t_sin.min():.3f}, {t_sin.max():.3f}]")
+        print(f"   t_cos: [{t_cos.min():.3f}, {t_cos.max():.3f}]")
+        print(f"   poi_norm: [{poi_norm.min():.3f}, {poi_norm.max():.3f}]")
+        print(f"   fused output: [{fused.min():.3f}, {fused.max():.3f}]")
+    
+    print("🎉 Teste passou! Classes funcionando corretamente.")
+    return True
+
+
+if __name__ == "__main__":
+    test_external_information()
