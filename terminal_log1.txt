@@ -1,0 +1,133 @@
+(orion_ct) andersonc@nitro:~/workspace/github/clnn$ /home/andersonc/anaconda3/envs/orion_ct/bin/python /home/andersonc/workspace/github/clnn/run_humob.py
+🎯 HUMOB CHALLENGE - PIPELINE CORRIGIDO
+==================================================
+Correções implementadas:
+✅ Sequências temporais adequadas (LSTM funcional)
+✅ Dados normalizados [0,1] / [-1,1]
+✅ Rollout para múltiplos passos
+✅ Discretização para grid [0,199]
+✅ Pipeline completo treino → submissão
+
+📁 Arquivo encontrado: humob_all_cities_v2_normalized.parquet
+
+Escolha uma opção:
+1. 🧪 Teste rápido (verifica se tudo está funcionando)
+2. 🏃 Exemplo mínimo (pipeline pequeno para demonstração)
+3. 🏆 Pipeline completo (para submissão final)
+
+Digite sua escolha (1-3): 2
+🚀 EXEMPLO MÍNIMO HUMOB
+Device: cuda
+========================================
+🧪 TESTE RÁPIDO DO PIPELINE
+========================================
+1. Testando cálculo de cluster centers...
+📂 Carregando centros existentes: test_centers.npy
+   ✅ Centers: torch.Size([64, 2])
+2. Testando dataset...
+   ✅ Batch shape: torch.Size([16, 6, 2])
+   ✅ Ranges: d_norm=[0.041,0.622], coords=[0.342,0.668]
+3. Testando modelo...
+   ✅ Predição shape: torch.Size([2, 2])
+   ✅ Predição range: [0.439, 0.586]
+
+🎉 TESTE RÁPIDO PASSOU! Pipeline está funcionando.
+
+🏃 Executando pipeline mínimo...
+🚀 PIPELINE COMPLETO HUMOB CHALLENGE
+Device: cuda
+Clusters: 128
+Epochs: 2
+Sequence length: 8
+============================================================
+
+📍 ETAPA 1: Calculando cluster centers...
+📂 Carregando centros existentes: centers_A_128.npy
+✅ Centers prontos: torch.Size([128, 2])
+
+🏋 ETAPA 2: Treinando modelo na cidade A...
+🏋 Iniciando treinamento do modelo HuMob...
+Parâmetros treináveis: 469,574
+
+🔄 Época 1/2
+Treino ['A']: 157229it [10:13:48,  4.27it/s, Loss=0.0012, GradNorm=0.02, LR=0.002000]
+Val: 72403it [2:42:49,  7.41it/s, Val Loss=0.0009]
+Treino: 0.0046 | Val: 0.0044
+Fusion weights: w_r=-0.019, w_e=0.879
+💾 Novo melhor modelo! Loss: 0.0044
+
+🔄 Época 2/2
+Treino ['A']: 157229it [10:19:47,  4.23it/s, Loss=0.0015, GradNorm=0.02, LR=0.002000]
+Val: 72403it [2:35:49,  7.74it/s, Val Loss=0.0014]
+Treino: 0.0043 | Val: 0.0042
+Fusion weights: w_r=0.023, w_e=0.741
+💾 Novo melhor modelo! Loss: 0.0042
+
+✅ Treinamento concluído! Modelo salvo em: humob_model_A.pt
+Melhor loss de validação: 0.0042
+
+🎯 ETAPA 3: Avaliação zero-shot em B, C, D...
+
+--- Avaliando cidade B ---
+🎯 Avaliando modelo em cidades ['B']...
+❌ Erro avaliando cidade B: Weights only load failed. This file can still be loaded, to do so you have two options, do those steps only if you trust the source of the checkpoint.
+        (1) In PyTorch 2.6, we changed the default value of the `weights_only` argument in `torch.load` from `False` to `True`. Re-running `torch.load` with `weights_only` set to `False` will likely succeed, but it can result in arbitrary code execution. Do it only if you got the file from a trusted source.
+        (2) Alternatively, to load with `weights_only=True` please check the recommended steps in the following error message.
+        WeightsUnpickler error: Unsupported global: GLOBAL numpy._core.multiarray._reconstruct was not an allowed global by default. Please use `torch.serialization.add_safe_globals([numpy._core.multiarray._reconstruct])` or the `torch.serialization.safe_globals([numpy._core.multiarray._reconstruct])` context manager to allowlist this global if you trust this class/function.
+
+Check the documentation of torch.load to learn more about types accepted by default with weights_only https://pytorch.org/docs/stable/generated/torch.load.html.
+
+--- Avaliando cidade C ---
+🎯 Avaliando modelo em cidades ['C']...
+❌ Erro avaliando cidade C: Weights only load failed. This file can still be loaded, to do so you have two options, do those steps only if you trust the source of the checkpoint.
+        (1) In PyTorch 2.6, we changed the default value of the `weights_only` argument in `torch.load` from `False` to `True`. Re-running `torch.load` with `weights_only` set to `False` will likely succeed, but it can result in arbitrary code execution. Do it only if you got the file from a trusted source.
+        (2) Alternatively, to load with `weights_only=True` please check the recommended steps in the following error message.
+        WeightsUnpickler error: Unsupported global: GLOBAL numpy._core.multiarray._reconstruct was not an allowed global by default. Please use `torch.serialization.add_safe_globals([numpy._core.multiarray._reconstruct])` or the `torch.serialization.safe_globals([numpy._core.multiarray._reconstruct])` context manager to allowlist this global if you trust this class/function.
+
+Check the documentation of torch.load to learn more about types accepted by default with weights_only https://pytorch.org/docs/stable/generated/torch.load.html.
+
+--- Avaliando cidade D ---
+🎯 Avaliando modelo em cidades ['D']...
+❌ Erro avaliando cidade D: Weights only load failed. This file can still be loaded, to do so you have two options, do those steps only if you trust the source of the checkpoint.
+        (1) In PyTorch 2.6, we changed the default value of the `weights_only` argument in `torch.load` from `False` to `True`. Re-running `torch.load` with `weights_only` set to `False` will likely succeed, but it can result in arbitrary code execution. Do it only if you got the file from a trusted source.
+        (2) Alternatively, to load with `weights_only=True` please check the recommended steps in the following error message.
+        WeightsUnpickler error: Unsupported global: GLOBAL numpy._core.multiarray._reconstruct was not an allowed global by default. Please use `torch.serialization.add_safe_globals([numpy._core.multiarray._reconstruct])` or the `torch.serialization.safe_globals([numpy._core.multiarray._reconstruct])` context manager to allowlist this global if you trust this class/function.
+
+Check the documentation of torch.load to learn more about types accepted by default with weights_only https://pytorch.org/docs/stable/generated/torch.load.html.
+
+📊 ETAPA 4: Gerando plots...
+
+📋 RELATÓRIO FINAL
+============================================================
+✅ Treinamento concluído em 2 épocas
+📈 Loss final de treino: 0.0043
+📉 Loss final de validação: 0.0042
+⚖ Pesos da fusão: w_r=0.023, w_e=0.741
+
+🎯 Resultados Zero-shot:
+  Cidade B: MSE=inf, Erro células=inf
+  Cidade C: MSE=inf, Erro células=inf
+  Cidade D: MSE=inf, Erro células=inf
+
+💾 Arquivos gerados:
+   - centers_A_128.npy (cluster centers)
+   - humob_model_A.pt (modelo treinado)
+   - humob_results.png (gráficos)
+
+🔍 VERIFICAÇÕES:
+  Convergiu? ❌ (loss diminuiu 20%+)
+  MSE razoável? ❌ (< 0.1 para [0,1])
+
+⚠ ALGUNS PROBLEMAS DETECTADOS
+   Considere ajustar hiperparâmetros ou verificar dados
+
+📄 Gerando submissão de exemplo...
+📄 Gerando submissão HuMob para cidades ['D']
+Dias: 61-62 | Output: humob_example_submission.csv
+⚠ Erro na submissão: Weights only load failed. This file can still be loaded, to do so you have two options, do those steps only if you trust the source of the checkpoint.
+        (1) In PyTorch 2.6, we changed the default value of the `weights_only` argument in `torch.load` from `False` to `True`. Re-running `torch.load` with `weights_only` set to `False` will likely succeed, but it can result in arbitrary code execution. Do it only if you got the file from a trusted source.
+        (2) Alternatively, to load with `weights_only=True` please check the recommended steps in the following error message.
+        WeightsUnpickler error: Unsupported global: GLOBAL numpy._core.multiarray._reconstruct was not an allowed global by default. Please use `torch.serialization.add_safe_globals([numpy._core.multiarray._reconstruct])` or the `torch.serialization.safe_globals([numpy._core.multiarray._reconstruct])` context manager to allowlist this global if you trust this class/function.
+
+Check the documentation of torch.load to learn more about types accepted by default with weights_only https://pytorch.org/docs/stable/generated/torch.load.html.
+
