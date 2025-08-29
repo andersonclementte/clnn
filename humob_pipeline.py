@@ -189,7 +189,8 @@ def generate_humob_submission(
     print(f"Dias: {submission_days[0]}-{submission_days[1]} | Output: {output_file}")
     
     # 1. Carrega modelo
-    ckpt = torch.load(checkpoint_path, map_location=device)
+    import numpy as np, torch
+    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
     centers = torch.from_numpy(ckpt['centers']).to(device)
     config = ckpt['config']
     
