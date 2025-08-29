@@ -298,7 +298,10 @@ def evaluate_model(
     print(f"🎯 Avaliando modelo em cidades {cities}...")
     
     # 1. Carrega checkpoint
-    ckpt = torch.load(checkpoint_path, map_location=device)
+    import numpy as np, torch
+    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    # with torch.serialization.safe_globals([np._core.multiarray._reconstruct]):
+    #     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
     centers = torch.from_numpy(ckpt['centers']).to(device)
     config = ckpt['config']
     
