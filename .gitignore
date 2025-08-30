@@ -17,3 +17,4 @@ __pycache__/humob_pipeline.cpython-312.pyc
 __pycache__/humob_training.cpython-312.pyc
 __pycache__/partial_information.cpython-312.pyc
 __pycache__/humob_dataset.cpython-312.pyc
+humob_model_finetuned_D.pt

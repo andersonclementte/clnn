@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grafo da Arquitetura HuMob</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        }
+        .subtitle {
+            text-align: center;
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            font-size: 1.2em;
+        }
+        
+        /* SVG Container */
+        .graph-container {
+            width: 100%;
+            background: #fafbfc;
+            border: 2px solid #e1e8ed;
+            border-radius: 10px;
+            padding: 20px;
+            overflow-x: auto;
+        }
+        
+        /* Node styles */
+        .node {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .node:hover {
+            transform: scale(1.05);
+        }
+        
+        .node-input { fill: #fff3cd; stroke: #f39c12; stroke-width: 3; }
+        .node-embedding { fill: #d4edda; stroke: #28a745; stroke-width: 3; }
+        .node-processing { fill: #cce5ff; stroke: #007bff; stroke-width: 3; }
+        .node-fusion { fill: #f8d7da; stroke: #dc3545; stroke-width: 3; }
+        .node-output { fill: #e2e3e5; stroke: #6c757d; stroke-width: 3; }
+        
+        /* Text styles */
+        .node-title { 
+            font-weight: bold; 
+            font-size: 14px; 
+            fill: #2c3e50;
+            text-anchor: middle;
+        }
+        .node-subtitle { 
+            font-size: 11px; 
+            fill: #7f8c8d;
+            text-anchor: middle;
+        }
+        .node-dim { 
+            font-size: 10px; 
+            fill: #e74c3c;
+            text-anchor: middle;
+            font-weight: bold;
+        }
+        
+        /* Edge styles */
+        .edge {
+            stroke: #34495e;
+            stroke-width: 2;
+            fill: none;
+            marker-end: url(#arrowhead);
+        }
+        .edge-thick {
+            stroke-width: 3;
+            stroke: #e74c3c;
+        }
+        .edge-data {
+            stroke: #3498db;
+            stroke-width: 2;
+            stroke-dasharray: 5,3;
+        }
+        
+        /* Arrows */
+        .arrow {
+            fill: #34495e;
+        }
+        
+        /* Legend */
+        .legend {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        .legend h3 {
+            margin: 0 0 15px 0;
+            color: #2c3e50;
+            font-size: 1.3em;
+        }
+        .legend-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            border: 2px solid;
+        }
+        
+        /* Performance info */
+        .performance {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .perf-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .perf-card h4 {
+            margin: 0 0 10px 0;
+            font-size: 1.2em;
+        }
+        .perf-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧠 Grafo da Arquitetura HuMob</h1>
+        <div class="subtitle">Neural Network Flow Graph - Dados → Processamento → Predições</div>
+        
+        <div class="graph-container">
+            <svg width="1300" height="800" viewBox="0 0 1300 800">
+                <!-- Definições de setas -->
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+                            refX="9" refY="3.5" orient="auto">
+                        <polygon points="0 0, 10 3.5, 0 7" class="arrow" />
+                    </marker>
+                    <marker id="arrowhead-thick" markerWidth="12" markerHeight="9" 
+                            refX="11" refY="4.5" orient="auto">
+                        <polygon points="0 0, 12 4.5, 0 9" fill="#e74c3c" />
+                    </marker>
+                </defs>
+                
+                <!-- INPUT LAYER -->
+                <!-- UID Input -->
+                <g class="node">
+                    <rect x="50" y="50" width="120" height="80" rx="10" class="node-input"/>
+                    <text x="110" y="75" class="node-title">uid</text>
+                    <text x="110" y="95" class="node-subtitle">User ID</text>
+                    <text x="110" y="110" class="node-dim">[batch] → 10D</text>
+                </g>
+                
+                <!-- City Input -->
+                <g class="node">
+                    <rect x="200" y="50" width="120" height="80" rx="10" class="node-input"/>
+                    <text x="260" y="75" class="node-title">city</text>
+                    <text x="260" y="95" class="node-subtitle">City Code</text>
+                    <text x="260" y="110" class="node-dim">[batch] → 4D</text>
+                </g>
+                
+                <!-- Temporal Input -->
+                <g class="node">
+                    <rect x="350" y="50" width="120" height="80" rx="10" class="node-input"/>
+                    <text x="410" y="70" class="node-title">d_norm</text>
+                    <text x="410" y="85" class="node-title">t_sin, t_cos</text>
+                    <text x="410" y="100" class="node-subtitle">Temporal</text>
+                    <text x="410" y="115" class="node-dim">[batch,3] → 16D</text>
+                </g>
+                
+                <!-- POI Input -->
+                <g class="node">
+                    <rect x="500" y="50" width="120" height="80" rx="10" class="node-input"/>
+                    <text x="560" y="75" class="node-title">poi_norm</text>
+                    <text x="560" y="95" class="node-subtitle">85 POI Cat</text>
+                    <text x="560" y="110" class="node-dim">[batch,85] → 10D</text>
+                </g>
+                
+                <!-- Coords Sequence Input -->
+                <g class="node">
+                    <rect x="1000" y="50" width="140" height="80" rx="10" class="node-input"/>
+                    <text x="1070" y="75" class="node-title">coords_seq</text>
+                    <text x="1070" y="95" class="node-subtitle">Trajectory</text>
+                    <text x="1070" y="110" class="node-dim">[batch,seq,2]</text>
+                </g>
+                
+                <!-- EMBEDDING LAYER -->
+                <!-- External Info Fusion -->
+                <g class="node">
+                    <rect x="200" y="200" width="220" height="80" rx="10" class="node-embedding"/>
+                    <text x="310" y="225" class="node-title">ExternalInformationFusion</text>
+                    <text x="310" y="245" class="node-subtitle">Static Context Processing</text>
+                    <text x="310" y="260" class="node-dim">40D → Concat → 40D</text>
+                </g>
+                
+                <!-- LSTM -->
+                <g class="node">
+                    <rect x="980" y="200" width="180" height="80" rx="10" class="node-embedding"/>
+                    <text x="1070" y="225" class="node-title">Bidirectional LSTM</text>
+                    <text x="1070" y="245" class="node-subtitle">Movement Patterns</text>
+                    <text x="1070" y="260" class="node-dim">2D → 20D (2×10)</text>
+                </g>
+                
+                <!-- PROCESSING LAYER -->
+                <!-- External Dense -->
+                <g class="node">
+                    <rect x="220" y="350" width="180" height="80" rx="10" class="node-processing"/>
+                    <text x="310" y="375" class="node-title">ExternalDense</text>
+                    <text x="310" y="395" class="node-subtitle">Dimension Reduction</text>
+                    <text x="310" y="410" class="node-dim">40D → 20D</text>
+                </g>
+                
+                <!-- FUSION LAYER -->
+                <g class="node">
+                    <rect x="550" y="500" width="200" height="80" rx="10" class="node-fusion"/>
+                    <text x="650" y="525" class="node-title">WeightedFusion</text>
+                    <text x="650" y="545" class="node-subtitle">w_r × static + w_e × dynamic</text>
+                    <text x="650" y="560" class="node-dim">20D + 20D → 20D</text>
+                </g>
+                
+                <!-- OUTPUT PROCESSING -->
+                <!-- MLP -->
+                <g class="node">
+                    <rect x="580" y="650" width="140" height="80" rx="10" class="node-output"/>
+                    <text x="650" y="675" class="node-title">MLP Head</text>
+                    <text x="650" y="695" class="node-subtitle">500 ReLU neurons</text>
+                    <text x="650" y="710" class="node-dim">20D → 512D</text>
+                </g>
+                
+                <!-- Softmax + Clusters -->
+                <g class="node">
+                    <rect x="800" y="650" width="160" height="80" rx="10" class="node-output"/>
+                    <text x="880" y="675" class="node-title">Softmax + Centers</text>
+                    <text x="880" y="695" class="node-subtitle">P @ cluster_centers</text>
+                    <text x="880" y="710" class="node-dim">512D → 2D</text>
+                </g>
+                
+                <!-- Final Output -->
+                <g class="node">
+                    <rect x="1050" y="650" width="160" height="80" rx="10" class="node-output"/>
+                    <text x="1130" y="675" class="node-title">Coordinates</text>
+                    <text x="1130" y="695" class="node-subtitle">Final Prediction</text>
+                    <text x="1130" y="710" class="node-dim">[batch, 2]</text>
+                </g>
+                
+                <!-- Cluster Centers (Static) -->
+                <g class="node">
+                    <rect x="800" y="500" width="160" height="80" rx="10" class="node-processing"/>
+                    <text x="880" y="525" class="node-title">Cluster Centers</text>
+                    <text x="880" y="545" class="node-subtitle">K-means (512 points)</text>
+                    <text x="880" y="560" class="node-dim">[512, 2]</text>
+                </g>
+                
+                <!-- EDGES (Connections) -->
+                <!-- Input to External Fusion -->
+                <path class="edge" d="M 110 130 L 250 200"/>
+                <path class="edge" d="M 260 130 L 280 200"/>
+                <path class="edge" d="M 410 130 L 350 200"/>
+                <path class="edge" d="M 560 130 L 380 200"/>
+                
+                <!-- Input to LSTM -->
+                <path class="edge" d="M 1070 130 L 1070 200"/>
+                
+                <!-- External Fusion to Dense -->
+                <path class="edge" d="M 310 280 L 310 350"/>
+                
+                <!-- Dense + LSTM to Fusion -->
+                <path class="edge edge-thick" d="M 400 390 Q 500 450 580 540" marker-end="url(#arrowhead-thick)"/>
+                <path class="edge edge-thick" d="M 980 240 Q 800 400 720 500" marker-end="url(#arrowhead-thick)"/>
+                
+                <!-- Fusion to MLP -->
+                <path class="edge" d="M 650 580 L 650 650"/>
+                
+                <!-- MLP to Softmax -->
+                <path class="edge" d="M 720 690 L 800 690"/>
+                
+                <!-- Cluster Centers to Softmax -->
+                <path class="edge-data" d="M 880 580 L 880 650"/>
+                
+                <!-- Softmax to Final -->
+                <path class="edge" d="M 960 690 L 1050 690"/>
+                
+                <!-- Labels para as conexões principais -->
+                <text x="450" y="470" class="node-dim">Static Branch</text>
+                <text x="850" y="370" class="node-dim">Dynamic Branch</text>
+                <text x="650" y="620" class="node-dim">Fused Representation</text>
+                
+            </svg>
+        </div>
+        
+        <!-- LEGEND -->
+        <div class="legend">
+            <h3>🎨 Legenda dos Componentes</h3>
+            <div class="legend-grid">
+                <div class="legend-item">
+                    <div class="legend-color node-input"></div>
+                    <span><strong>Inputs:</strong> Dados de entrada normalizados</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color node-embedding"></div>
+                    <span><strong>Embeddings:</strong> Transformação e fusão de features</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color node-processing"></div>
+                    <span><strong>Processing:</strong> Projeções e cluster centers</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color node-fusion"></div>
+                    <span><strong>Fusion:</strong> Combinação inteligente (w_r, w_e)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color node-output"></div>
+                    <span><strong>Output:</strong> MLP → Softmax → Coordenadas</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- PERFORMANCE -->
+        <div class="performance">
+            <div class="perf-card">
+                <h4>🎯 Arquitetura Híbrida</h4>
+                <div class="perf-value">2 Ramos</div>
+                <p>Static Context + Dynamic Patterns</p>
+            </div>
+            <div class="perf-card">
+                <h4>🔄 Fine-tuning</h4>
+                <div class="perf-value">40% Melhoria</div>
+                <p>Zero-shot → Sequential A→B→C→D</p>
+            </div>
+            <div class="perf-card">
+                <h4>📍 Precisão</h4>
+                <div class="perf-value">3.5km</div>
+                <p>Erro médio após fine-tuning</p>
+            </div>
+            <div class="perf-card">
+                <h4>🎲 Clusters</h4>
+                <div class="perf-value">512 Centros</div>
+                <p>K-means em locais típicos</p>
+            </div>
+        </div>
+        
+    </div>
+</body>
+</html>
