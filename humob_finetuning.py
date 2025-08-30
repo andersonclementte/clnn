@@ -10,6 +10,9 @@ from datetime import datetime
 from humob_model import HuMobModel
 from humob_dataset import create_humob_loaders
 
+# 🔬 MLflow - Import do tracker personalizado (ADICIONE)
+from mlflow_utils import HuMobMLflowTracker
+
 
 def load_checkpoint_safe(checkpoint_path: str, device: torch.device):
     """
@@ -37,32 +40,37 @@ def finetune_model(
     target_city: str,
     device: torch.device,
     n_epochs: int = 3,
-    learning_rate: float = 1e-4,  # LR menor para fine-tuning
+    learning_rate: float = 1e-4,
     batch_size: int = 32,
     sequence_length: int = 24,
     save_path: str = None,
-    data_split: tuple = (0.0, 0.8)  # Dias 1-60 para fine-tuning (60/75 ≈ 0.8)
+    data_split: tuple = (0.0, 0.8),
+    # 🔬 MLflow - Parâmetros para tracking (ADICIONE)
+    mlflow_tracker: HuMobMLflowTracker = None,
+    base_run_id: str = None
 ):
     """
-    Fine-tuning do modelo pré-treinado em uma cidade específica.
-    
-    Args:
-        parquet_path: Caminho para dados normalizados
-        pretrained_checkpoint: Modelo pré-treinado (ex: humob_model_A.pt)
-        target_city: Cidade para fine-tuning ("B", "C", ou "D")
-        device: Device PyTorch
-        n_epochs: Épocas de fine-tuning (menos que treinamento inicial)
-        learning_rate: LR reduzido para fine-tuning
-        batch_size: Tamanho do batch
-        sequence_length: Comprimento da sequência temporal
-        save_path: Onde salvar modelo fine-tuned (auto-gerado se None)
-        data_split: Range de dias para fine-tuning [0,1] normalizado
-    
-    Returns:
-        tuple: (modelo_fine_tuned, train_losses, val_losses)
+    Fine-tuning do modelo pré-treinado em uma cidade específica com tracking MLflow.
     """
     print(f"🎯 FINE-TUNING NA CIDADE {target_city}")
     print("=" * 40)
+    
+    # 🔬 MLflow - Inicia run de fine-tuning (ADICIONE)
+    if mlflow_tracker is not None:
+        config = {
+            "n_epochs": n_epochs,
+            "learning_rate": learning_rate,
+            "batch_size": batch_size,
+            "sequence_length": sequence_length,
+            "data_split": f"{data_split[0]}-{data_split[1]}",
+            "target_city": target_city
+        }
+        ft_run_id = mlflow_tracker.start_finetuning_run(
+            base_run_id=base_run_id or "unknown",
+            target_city=target_city,
+            config=config
+        )
+        print(f"🔬 MLflow fine-tuning run iniciado: {ft_run_id}")
     
     # 1. Carrega modelo pré-treinado com correção PyTorch 2.6+
     print("📂 Carregando modelo pré-treinado...")
@@ -87,7 +95,6 @@ def finetune_model(
     # 3. Cria loaders para cidade alvo com dados de fine-tuning
     print(f"📊 Criando datasets para cidade {target_city}...")
     
-    # CORRIGIDO: usa create_humob_loaders com parâmetros customizados
     from humob_dataset import HuMobNormalizedDataset
     from torch.utils.data import DataLoader
     
@@ -97,9 +104,9 @@ def finetune_model(
         cities=[target_city],
         mode="train",
         sequence_length=sequence_length,
-        train_days=data_split,  # Ex: (0.0, 0.8) para dias 1-60
-        val_days=(0.8, 1.0),    # Não usado no treino
-        max_sequences_per_user=30  # Menos sequências para fine-tuning
+        train_days=data_split,
+        val_days=(0.8, 1.0),
+        max_sequences_per_user=30
     )
     
     # Dataset de validação (últimos 20% dos dados disponíveis)
@@ -109,7 +116,7 @@ def finetune_model(
         mode="val",
         sequence_length=sequence_length,
         train_days=data_split,
-        val_days=(0.75, 0.8),  # Pequena fração para validação
+        val_days=(0.75, 0.8),
         max_sequences_per_user=10
     )
     
@@ -117,16 +124,14 @@ def finetune_model(
     val_loader = DataLoader(val_ds, batch_size=batch_size, num_workers=0)
     
     # 4. Setup de fine-tuning
-    # LR menor e otimizador mais conservador
     optimizer = torch.optim.AdamW(
         model.parameters(), 
         lr=learning_rate,
-        betas=(0.9, 0.999),  # Menos agressivo
-        weight_decay=1e-5,   # Regularização menor
+        betas=(0.9, 0.999),
+        weight_decay=1e-5,
         eps=1e-8
     )
     
-    # Scheduler mais suave
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=n_epochs, eta_min=learning_rate/10
     )
@@ -135,6 +140,8 @@ def finetune_model(
     best_val_loss = float('inf')
     train_losses = []
     val_losses = []
+    # 🔬 MLflow - Histórico dos pesos da fusão (ADICIONE)
+    fusion_weights_history = []
     
     print(f"🔧 Setup fine-tuning:")
     print(f"   Learning rate: {learning_rate}")
@@ -181,7 +188,7 @@ def finetune_model(
                 
                 # Backward com gradient clipping mais suave
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)  # Clipping menor
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
                 optimizer.step()
                 
                 train_loss_epoch += loss.item() * target.size(0)
@@ -229,7 +236,23 @@ def finetune_model(
         train_losses.append(avg_train_loss)
         val_losses.append(avg_val_loss)
         
+        # 🔬 MLflow - Captura pesos da fusão (ADICIONE)
+        w_r = model.weighted_fusion.w_r.item()
+        w_e = model.weighted_fusion.w_e.item()
+        fusion_weights = {"w_r": w_r, "w_e": w_e}
+        fusion_weights_history.append(fusion_weights)
+        
         print(f"Cidade {target_city} - Treino: {avg_train_loss:.5f} | Val: {avg_val_loss:.5f}")
+        
+        # 🔬 MLflow - Log métricas da época (ADICIONE)
+        if mlflow_tracker is not None:
+            mlflow_tracker.log_training_metrics(
+                epoch=epoch,
+                train_loss=avg_train_loss,
+                val_loss=avg_val_loss,
+                fusion_weights=fusion_weights,
+                learning_rate=optimizer.param_groups[0]["lr"]
+            )
         
         # Update scheduler
         scheduler.step()
@@ -253,8 +276,22 @@ def finetune_model(
                 'epoch': epoch,
                 'city': target_city,
                 'finetuned_from': pretrained_checkpoint,
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                # 🔬 MLflow - Adiciona run ID (ADICIONE)
+                'mlflow_run_id': ft_run_id if mlflow_tracker else None
             }, save_path)
+            
+            # 🔬 MLflow - Log modelo como artefato (ADICIONE)
+            if mlflow_tracker is not None:
+                mlflow_tracker.log_model_artifact(model, save_path)
+    
+    # 🔬 MLflow - Log plots do fine-tuning (ADICIONE)
+    if mlflow_tracker is not None:
+        mlflow_tracker.create_training_plots(
+            train_losses=train_losses,
+            val_losses=val_losses,
+            fusion_weights_history=fusion_weights_history
+        )
     
     print(f"\n✅ Fine-tuning cidade {target_city} concluído!")
     print(f"💾 Modelo salvo: {save_path}")
@@ -270,13 +307,12 @@ def sequential_finetuning(
     device: torch.device = None,
     n_epochs_per_city: int = 3,
     learning_rate: float = 1e-4,
-    sequence_length: int = 24
+    sequence_length: int = 24,
+    # 🔬 MLflow - Parâmetro para tracker (ADICIONE)
+    mlflow_tracker: HuMobMLflowTracker = None
 ):
     """
-    Fine-tuning sequencial em múltiplas cidades.
-    
-    Processo: A (treinado) → fine-tune B → fine-tune C → fine-tune D
-    Cada cidade usa o modelo da cidade anterior como ponto de partida.
+    Fine-tuning sequencial em múltiplas cidades com tracking MLflow.
     """
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -286,6 +322,17 @@ def sequential_finetuning(
     print(f"Base model: {base_checkpoint}")
     print(f"Cities: {' → '.join(cities)}")
     print(f"Epochs per city: {n_epochs_per_city}")
+    
+    # 🔬 MLflow - Extrai run ID do modelo base (ADICIONE)
+    base_run_id = None
+    if os.path.exists(base_checkpoint):
+        try:
+            base_ckpt = torch.load(base_checkpoint, map_location='cpu', weights_only=False)
+            base_run_id = base_ckpt.get('mlflow_run_id')
+            if base_run_id:
+                print(f"🔗 Linked to base run: {base_run_id}")
+        except:
+            pass
     
     results = {}
     current_checkpoint = base_checkpoint
@@ -306,7 +353,10 @@ def sequential_finetuning(
                 n_epochs=n_epochs_per_city,
                 learning_rate=learning_rate,
                 sequence_length=sequence_length,
-                save_path=city_checkpoint
+                save_path=city_checkpoint,
+                # 🔬 MLflow - Passa tracker e base run ID (ADICIONE)
+                mlflow_tracker=mlflow_tracker,
+                base_run_id=base_run_id
             )
             
             results[city] = {
@@ -330,7 +380,6 @@ def sequential_finetuning(
                 'status': 'failed',
                 'error': str(e)
             }
-            # Continue com checkpoint atual em caso de erro
     
     # Relatório final
     print(f"\n📊 RELATÓRIO SEQUENCIAL")
@@ -353,17 +402,17 @@ def sequential_finetuning(
     return results
 
 
-# Função de utilidade para comparar performance
 def compare_models_performance(
     parquet_path: str,
-    checkpoints: dict,  # {'model_name': 'path_to_checkpoint'}
+    checkpoints: dict,
     test_cities: list[str] = ["B", "C", "D"],
     device: torch.device = None,
-    n_samples: int = 2000
+    n_samples: int = 2000,
+    # 🔬 MLflow - Parâmetro para tracker (ADICIONE)
+    mlflow_tracker: HuMobMLflowTracker = None
 ):
     """
-    Compara performance de múltiplos modelos nas cidades de teste.
-    Útil para comparar zero-shot vs fine-tuned models.
+    Compara performance de múltiplos modelos com tracking MLflow.
     """
     if device is None:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -371,12 +420,20 @@ def compare_models_performance(
     print("📊 COMPARAÇÃO DE MODELOS")
     print("=" * 40)
     
+    # 🔬 MLflow - Inicia run de comparação (ADICIONE)
+    if mlflow_tracker is not None:
+        comp_run_id = mlflow_tracker.start_comparison_run(checkpoints)
+        print(f"🔬 MLflow comparison run iniciado: {comp_run_id}")
+    
     from humob_training import evaluate_model
     
     results = {}
     
     for model_name, checkpoint_path in checkpoints.items():
         print(f"\n🔍 Avaliando {model_name}...")
+        
+        # Determina tipo do modelo baseado no nome
+        model_type = "fine_tuned" if "fine" in model_name.lower() else "zero_shot"
                 
         results[model_name] = {}
         
@@ -387,7 +444,10 @@ def compare_models_performance(
                     checkpoint_path=checkpoint_path,
                     device=device,
                     cities=[city],
-                    n_samples=n_samples
+                    n_samples=n_samples,
+                    # 🔬 MLflow - Passa tracker (ADICIONE)
+                    mlflow_tracker=mlflow_tracker,
+                    model_type=model_type
                 )
                 results[model_name][city] = {'mse': mse, 'cell_error': cell_error}
                 print(f"   {city}: MSE={mse:.4f}, Erro células={cell_error:.2f}")
@@ -395,6 +455,11 @@ def compare_models_performance(
             except Exception as e:
                 print(f"   ❌ {city}: Erro - {e}")
                 results[model_name][city] = {'mse': float('inf'), 'cell_error': float('inf')}
+    
+    # 🔬 MLflow - Log comparação completa (ADICIONE)
+    if mlflow_tracker is not None:
+        mlflow_tracker.log_model_comparison(results)
+        mlflow_tracker.create_results_comparison_plot(results, "cell_error")
     
     # Relatório comparativo
     print(f"\n📋 COMPARAÇÃO DETALHADA")
@@ -416,20 +481,53 @@ def compare_models_performance(
             ranking = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"{i+1}º"
             print(f"  {ranking} {model_name:20s}: MSE={mse:.4f}, Células={cell_err:.2f}")
     
+    # 🔬 MLflow - Log resumo final para o paper (ADICIONE)
+    if mlflow_tracker is not None:
+        # Calcula melhoria do fine-tuning
+        zero_shot_results = {k: v for k, v in results.items() if "zero" in k.lower()}
+        ft_results = {k: v for k, v in results.items() if "fine" in k.lower()}
+        
+        if zero_shot_results and ft_results:
+            # Pega melhor resultado de cada tipo
+            zero_shot_avg = np.mean([
+                np.mean([city_data['cell_error'] for city_data in model_data.values() 
+                        if city_data['cell_error'] != float('inf')])
+                for model_data in zero_shot_results.values()
+            ])
+            
+            ft_avg = np.mean([
+                np.mean([city_data['cell_error'] for city_data in model_data.values()
+                        if city_data['cell_error'] != float('inf')])  
+                for model_data in ft_results.values()
+            ])
+            
+            improvement_pct = ((zero_shot_avg - ft_avg) / zero_shot_avg) * 100
+            
+            mlflow_tracker.log_paper_summary({
+                "final_avg_error_km": ft_avg * 0.5,
+                "zero_shot_error_km": zero_shot_avg * 0.5,
+                "improvement_pct": improvement_pct,
+                "n_experiments": len(checkpoints)
+            })
+    
     return results
 
 
 # Função principal para execução completa
 def main():
-    """Execução do fine-tuning completo."""
+    """Execução do fine-tuning completo com MLflow."""
+    
+    # 🔬 MLflow - Configura tracker (ADICIONE)
+    mlflow_tracker = HuMobMLflowTracker(experiment_name="HuMob_Challenge_Paper")
+    
     # Configurações - AJUSTE AQUI
     parquet_file = "humob_all_cities_v2_normalized.parquet"
     base_model = "humob_model_A.pt"  # Modelo treinado apenas em A
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    print("🎯 FINE-TUNING HUMOB CHALLENGE")
-    print("=" * 50)
+    print("🎯 FINE-TUNING HUMOB CHALLENGE COM MLFLOW")
+    print("=" * 60)
     
     # Verifica arquivos
     import os
@@ -449,8 +547,10 @@ def main():
         cities=["B", "C", "D"],
         device=device,
         n_epochs_per_city=3,
-        learning_rate=5e-5,  # LR bem baixo para fine-tuning
-        sequence_length=24
+        learning_rate=5e-5,
+        sequence_length=24,
+        # 🔬 MLflow - Passa tracker (ADICIONE)
+        mlflow_tracker=mlflow_tracker
     )
     
     # Comparação de performance se tudo deu certo
@@ -469,11 +569,14 @@ def main():
             parquet_path=parquet_file,
             checkpoints=checkpoints,
             device=device,
-            n_samples=3000
+            n_samples=3000,
+            # 🔬 MLflow - Passa tracker (ADICIONE)
+            mlflow_tracker=mlflow_tracker
         )
         
         print("\n🎉 FINE-TUNING COMPLETO!")
         print("Agora você pode usar os modelos fine-tuned para submissão.")
+        print("🔬 Dados salvos no MLflow - execute 'mlflow ui' para visualizar")
     
     return results
 

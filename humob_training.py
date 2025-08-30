@@ -13,6 +13,9 @@ import matplotlib.pyplot as plt
 from humob_model import HuMobModel, discretize_coordinates
 from humob_dataset import create_humob_loaders, create_test_loader
 
+# 🔬 MLflow - Import do tracker personalizado
+from mlflow_utils import HuMobMLflowTracker
+
 
 def compute_cluster_centers(
     parquet_path: str,
@@ -21,7 +24,7 @@ def compute_cluster_centers(
     sample_size: int = 200_000,
     save_path: str = "cluster_centers.npy",
     chunk_size: int = 50_000,
-    coord_columns: list = ['x_norm', 'y_norm']  # CORRIGIDO: usar coordenadas normalizadas
+    coord_columns: list = ['x_norm', 'y_norm']
 ) -> torch.Tensor:
     """
     Calcula centros de cluster usando K-Means em coordenadas normalizadas.
@@ -117,10 +120,29 @@ def train_humob_model(
     batch_size: int = 32,
     sequence_length: int = 24,
     n_users: int = 100_000,
-    save_path: str = "humob_model.pt"
+    save_path: str = "humob_model.pt",
+    # 🔬 MLflow - Parâmetro para tracker (ADICIONE)
+    mlflow_tracker: HuMobMLflowTracker = None
 ):
-    """Treina o modelo HuMob com dados normalizados."""
+    """Treina o modelo HuMob com dados normalizados e tracking MLflow."""
     print("🏋️ Iniciando treinamento do modelo HuMob...")
+    
+    # 🔬 MLflow - Configuração do experimento (ADICIONE)
+    if mlflow_tracker is not None:
+        config = {
+            "n_clusters": cluster_centers.shape[0],
+            "n_epochs": n_epochs,
+            "learning_rate": learning_rate,
+            "batch_size": batch_size,
+            "sequence_length": sequence_length,
+            "n_users": n_users,
+            "optimizer": "AdamW",
+            "scheduler": "ReduceLROnPlateau", 
+            "device": device,
+            "cities": cities
+        }
+        run_id = mlflow_tracker.start_base_training_run(config)
+        print(f"🔬 MLflow run iniciado: {run_id}")
     
     # 1. Cria loaders
     train_loader, val_loader = create_humob_loaders(
@@ -156,6 +178,8 @@ def train_humob_model(
     best_val_loss = float('inf')
     train_losses = []
     val_losses = []
+    # 🔬 MLflow - Histórico dos pesos da fusão (ADICIONE)
+    fusion_weights_history = []
     
     print(f"Parâmetros treináveis: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
     
@@ -254,8 +278,25 @@ def train_humob_model(
         train_losses.append(avg_train_loss)
         val_losses.append(avg_val_loss)
         
+        # 🔬 MLflow - Captura pesos da fusão (ADICIONE)
+        w_r = model.weighted_fusion.w_r.item()
+        w_e = model.weighted_fusion.w_e.item()
+        fusion_weights = {"w_r": w_r, "w_e": w_e}
+        fusion_weights_history.append(fusion_weights)
+        
         print(f"Treino: {avg_train_loss:.4f} | Val: {avg_val_loss:.4f}")
-        print(f"Fusion weights: w_r={model.weighted_fusion.w_r.item():.3f}, w_e={model.weighted_fusion.w_e.item():.3f}")
+        print(f"Fusion weights: w_r={w_r:.3f}, w_e={w_e:.3f}")
+        
+        # 🔬 MLflow - Log métricas da época (ADICIONE)
+        if mlflow_tracker is not None:
+            mlflow_tracker.log_training_metrics(
+                epoch=epoch,
+                train_loss=avg_train_loss,
+                val_loss=avg_val_loss,
+                fusion_weights=fusion_weights,
+                grad_norm=post_clip_norm if 'post_clip_norm' in locals() else None,
+                learning_rate=optimizer.param_groups[0]["lr"]
+            )
         
         # Learning rate scheduling
         scheduler.step(avg_val_loss)
@@ -277,8 +318,22 @@ def train_humob_model(
                 },
                 'train_loss': avg_train_loss,
                 'val_loss': avg_val_loss,
-                'epoch': epoch
+                'epoch': epoch,
+                # 🔬 MLflow - Adiciona metadados do experimento (ADICIONE)
+                'mlflow_run_id': run_id if mlflow_tracker else None
             }, save_path)
+            
+            # 🔬 MLflow - Log modelo como artefato (ADICIONE)
+            if mlflow_tracker is not None:
+                mlflow_tracker.log_model_artifact(model, save_path)
+    
+    # 🔬 MLflow - Log plots finais (ADICIONE)
+    if mlflow_tracker is not None:
+        mlflow_tracker.create_training_plots(
+            train_losses=train_losses,
+            val_losses=val_losses,
+            fusion_weights_history=fusion_weights_history
+        )
     
     print(f"\n✅ Treinamento concluído! Modelo salvo em: {save_path}")
     print(f"Melhor loss de validação: {best_val_loss:.4f}")
@@ -292,16 +347,17 @@ def evaluate_model(
     device: torch.device,
     cities: list[str] = ["D"],
     n_samples: int = 5000,
-    sequence_length: int = 24
+    sequence_length: int = 24,
+    # 🔬 MLflow - Parâmetro para tracker (ADICIONE)
+    mlflow_tracker: HuMobMLflowTracker = None,
+    model_type: str = "zero_shot"
 ):
-    """Avalia o modelo em cidades específicas."""
+    """Avalia o modelo em cidades específicas com tracking MLflow."""
     print(f"🎯 Avaliando modelo em cidades {cities}...")
     
     # 1. Carrega checkpoint
     import numpy as np, torch
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    # with torch.serialization.safe_globals([np._core.multiarray._reconstruct]):
-    #     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
     centers = torch.from_numpy(ckpt['centers']).to(device)
     config = ckpt['config']
     
@@ -369,5 +425,16 @@ def evaluate_model(
     print(f"  MSE: {avg_mse:.4f}")
     print(f"  Erro médio em células: {avg_cell_error:.2f}")
     print(f"  Amostras avaliadas: {total_samples:,}")
+    
+    # 🔬 MLflow - Log resultados da avaliação (ADICIONE)
+    if mlflow_tracker is not None:
+        for city in cities:
+            mlflow_tracker.log_evaluation_results(
+                city=city,
+                mse=avg_mse,
+                cell_error=avg_cell_error,
+                n_samples=total_samples,
+                model_type=model_type
+            )
     
     return avg_mse, avg_cell_error
