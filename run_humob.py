@@ -1,6 +1,8 @@
 """
 Script principal para executar o pipeline completo do HuMob Challenge.
 
+🆕 NOVO: FINE-TUNING IMPLEMENTADO!
+
 CORREÇÕES IMPLEMENTADAS baseadas na análise:
 1. ✅ Sequências temporais adequadas (sequence_length > 1) para LSTM fazer sentido
 2. ✅ Uso correto da classe ExternalInformationFusionNormalized (dados já normalizados)
@@ -9,6 +11,7 @@ CORREÇÕES IMPLEMENTADAS baseadas na análise:
 5. ✅ Discretização final para grid [0,199]
 6. ✅ Cluster centers calculados corretamente
 7. ✅ Pipeline completo com treino, validação e submissão
+8. 🆕 FINE-TUNING sequencial A → B → C → D
 
 PREMISSAS:
 - Dados já normalizados conforme especificado:
@@ -36,6 +39,7 @@ try:
     from humob_dataset import create_humob_loaders, create_test_loader
     from humob_training import compute_cluster_centers, train_humob_model, evaluate_model
     from humob_pipeline import run_full_pipeline, generate_humob_submission
+    from humob_finetuning import finetune_model, sequential_finetuning, compare_models_performance  # 🆕 NOVO!
 except ImportError as e:
     print(f"❌ Erro importando módulos: {e}")
     print("📋 Certifique-se de que os arquivos estão no mesmo diretório:")
@@ -43,8 +47,9 @@ except ImportError as e:
     print("   - partial_information.py") 
     print("   - humob_model.py")
     print("   - humob_dataset.py")
-    print("   - humob_training.py")
-    print("   - humob_pipeline.py")
+    print("   - humob_training.py (CORRIGIDO)")
+    print("   - humob_pipeline.py (CORRIGIDO)")
+    print("   - humob_finetuning.py (NOVO)")
     exit(1)
 
 
@@ -201,20 +206,160 @@ def run_full_competition(parquet_path: str):
     return results
 
 
+def run_finetuning_example(parquet_path: str):
+    """🆕 NOVO: Executa fine-tuning sequencial."""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    print("🎯 FINE-TUNING SEQUENCIAL HUMOB")
+    print(f"Device: {device}")
+    print("=" * 50)
+    
+    # Verifica se modelo base existe
+    base_model = "humob_model_A.pt"
+    if not os.path.exists(base_model):
+        print(f"❌ Modelo base não encontrado: {base_model}")
+        print("Execute primeiro a opção 2 ou 3 para treinar o modelo base em A")
+        return None
+    
+    print(f"📂 Modelo base encontrado: {base_model}")
+    
+    # Fine-tuning sequencial com configurações moderadas
+    results = sequential_finetuning(
+        parquet_path=parquet_path,
+        base_checkpoint=base_model,
+        cities=["B", "C", "D"],
+        device=device,
+        n_epochs_per_city=3,        # 3 épocas por cidade
+        learning_rate=5e-5,         # LR bem baixo para fine-tuning
+        sequence_length=24
+    )
+    
+    # Comparação de performance
+    successful = sum(1 for r in results.values() if r['status'] == 'success')
+    if successful > 0:
+        print(f"\n🔍 COMPARANDO PERFORMANCE...")
+        
+        # Monta lista de checkpoints para comparar
+        checkpoints = {'Zero-shot (A apenas)': base_model}
+        
+        for city, result in results.items():
+            if result['status'] == 'success':
+                checkpoints[f'Fine-tuned {city}'] = result['checkpoint']
+        
+        comparison = compare_models_performance(
+            parquet_path=parquet_path,
+            checkpoints=checkpoints,
+            device=device,
+            n_samples=2000  # Amostra menor para ser mais rápido
+        )
+        
+        # Se o fine-tuning foi bem-sucedido, oferece gerar submissão
+        if successful == len(["B", "C", "D"]):
+            print(f"\n🎉 FINE-TUNING COMPLETO!")
+            
+            response = input("\n📄 Gerar submissão com modelos fine-tuned? (y/n): ").strip().lower()
+            if response == 'y':
+                # Gera submissão usando modelo da última cidade (D)
+                final_checkpoint = results["D"]["checkpoint"]
+                submission_df = generate_humob_submission(
+                    parquet_path=parquet_path,
+                    checkpoint_path=final_checkpoint,
+                    device=device,
+                    target_cities=["B", "C", "D"],
+                    submission_days=(61, 75),
+                    sequence_length=24,
+                    output_file="humob_finetuned_submission.csv"
+                )
+                print(f"✅ Submissão fine-tuned gerada: {len(submission_df):,} predições")
+    
+    return results
+
+
+def run_single_city_finetuning(parquet_path: str):
+    """🆕 NOVO: Fine-tuning em uma cidade específica."""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    print("🎯 FINE-TUNING CIDADE ESPECÍFICA")
+    print("=" * 40)
+    
+    # Verifica modelo base
+    base_model = "humob_model_A.pt"
+    if not os.path.exists(base_model):
+        print(f"❌ Modelo base não encontrado: {base_model}")
+        print("Execute primeiro a opção 2 ou 3 para treinar o modelo base em A")
+        return None
+    
+    # Seleciona cidade
+    print("Cidades disponíveis para fine-tuning: B, C, D")
+    city = input("Digite a cidade (B/C/D): ").strip().upper()
+    
+    if city not in ["B", "C", "D"]:
+        print("❌ Cidade inválida")
+        return None
+    
+    print(f"🎯 Iniciando fine-tuning na cidade {city}...")
+    
+    # Fine-tuning
+    try:
+        model, train_losses, val_losses = finetune_model(
+            parquet_path=parquet_path,
+            pretrained_checkpoint=base_model,
+            target_city=city,
+            device=device,
+            n_epochs=1,
+            learning_rate=5e-5,
+            sequence_length=24
+        )
+        
+        print(f"\n✅ Fine-tuning cidade {city} concluído!")
+        
+        # Compara com zero-shot
+        checkpoints = {
+            'Zero-shot (A apenas)': base_model,
+            f'Fine-tuned {city}': f'humob_model_finetuned_{city}.pt'
+        }
+        
+        comparison = compare_models_performance(
+            parquet_path=parquet_path,
+            checkpoints=checkpoints,
+            test_cities=[city],
+            device=device,
+            n_samples=3000
+        )
+        
+        return {
+            'city': city,
+            'model': model,
+            'train_losses': train_losses,
+            'val_losses': val_losses,
+            'checkpoint': f'humob_model_finetuned_{city}.pt',
+            'comparison': comparison
+        }
+        
+    except Exception as e:
+        print(f"❌ Erro durante fine-tuning: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
 def main():
-    """Função principal com menu interativo."""
+    """Função principal com menu interativo ATUALIZADO."""
     
     # Configuração do arquivo (AJUSTE AQUI)
     parquet_file = "humob_all_cities_v2_normalized.parquet"
     
-    print("🎯 HUMOB CHALLENGE - PIPELINE CORRIGIDO")
-    print("=" * 50)
+    print("🎯 HUMOB CHALLENGE - PIPELINE COM FINE-TUNING")
+    print("=" * 60)
+    print("🆕 Fine-tuning implementado!")
+    print()
     print("Correções implementadas:")
     print("✅ Sequências temporais adequadas (LSTM funcional)")
     print("✅ Dados normalizados [0,1] / [-1,1]") 
     print("✅ Rollout para múltiplos passos")
     print("✅ Discretização para grid [0,199]")
     print("✅ Pipeline completo treino → submissão")
+    print("🆕 Fine-tuning sequencial A → B → C → D")
     print()
     
     if not os.path.exists(parquet_file):
@@ -229,14 +374,17 @@ def main():
     print(f"📁 Arquivo encontrado: {parquet_file}")
     print()
     
-    # Menu
+    # Menu ATUALIZADO
     print("Escolha uma opção:")
     print("1. 🧪 Teste rápido (verifica se tudo está funcionando)")
     print("2. 🏃 Exemplo mínimo (pipeline pequeno para demonstração)")  
     print("3. 🏆 Pipeline completo (para submissão final)")
+    print("4. 🎯 Fine-tuning sequencial B→C→D")
+    print("5. 🎪 Fine-tuning cidade específica")
+    print("6. 🔍 Avaliar modelos existentes (sem treinar)")
     
     try:
-        choice = input("\nDigite sua escolha (1-3): ").strip()
+        choice = input("\nDigite sua escolha (1-6): ").strip()
         
         if choice == "1":
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -247,6 +395,41 @@ def main():
             
         elif choice == "3":
             run_full_competition(parquet_file)
+            
+        elif choice == "4":
+            run_finetuning_example(parquet_file)
+            
+        elif choice == "5":
+            run_single_city_finetuning(parquet_file)
+            
+        elif choice == "6":
+            # Avalia modelos existentes
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            
+            # Busca modelos disponíveis
+            checkpoints = {}
+            
+            if os.path.exists("humob_model_A.pt"):
+                checkpoints['Zero-shot (A apenas)'] = "humob_model_A.pt"
+            
+            for city in ["B", "C", "D"]:
+                checkpoint = f"humob_model_finetuned_{city}.pt"
+                if os.path.exists(checkpoint):
+                    checkpoints[f'Fine-tuned {city}'] = checkpoint
+            
+            if not checkpoints:
+                print("❌ Nenhum modelo encontrado. Execute treino primeiro.")
+            else:
+                print(f"📊 Encontrados {len(checkpoints)} modelos:")
+                for name in checkpoints:
+                    print(f"   - {name}")
+                
+                comparison = compare_models_performance(
+                    parquet_path=parquet_file,
+                    checkpoints=checkpoints,
+                    device=device,
+                    n_samples=3000
+                )
             
         else:
             print("❌ Opção inválida")
