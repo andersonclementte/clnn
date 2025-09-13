@@ -10,11 +10,11 @@ import os
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from humob_model import HuMobModel, discretize_coordinates
-from humob_dataset import create_humob_loaders, create_test_loader
+from src.models.humob_model import HuMobModel, discretize_coordinates
+from src.data.dataset import create_humob_loaders, create_test_loader
 
 # 🔬 MLflow - Import do tracker personalizado
-from mlflow_utils import HuMobMLflowTracker
+from src.utils.mlflow_tracker import HuMobMLflowTracker
 
 
 def compute_cluster_centers(

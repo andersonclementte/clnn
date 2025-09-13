@@ -1,21 +1,47 @@
-humob_all_cities_dpsk.parquet
-centers_A_64.npy
-centers_A_256.npy
-centers_A_1024.npy
-humob_all_cities_normalized.parquet
-humob_all_cities_v2_normalized.parquet
-humob_sample_normalized.parquet
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
+# Data files
+data/raw/*.parquet
+data/processed/*.parquet
 
-centers_A_128.npy
-humob_model_A.pt
-humob_results.png
-test_centers.npy
-__pycache__/external_information.cpython-312.pyc
-__pycache__/humob_model.cpython-312.pyc
-__pycache__/humob_pipeline.cpython-312.pyc
-__pycache__/humob_training.cpython-312.pyc
-__pycache__/partial_information.cpython-312.pyc
-__pycache__/humob_dataset.cpython-312.pyc
-humob_model_finetuned_D.pt
-mlruns
+# Model outputs  
+outputs/models/*.pt
+outputs/models/*.npy
+
+# Experiment data
+experiments/mlruns/
+experiments/logs/*.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp

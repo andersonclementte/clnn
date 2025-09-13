@@ -7,11 +7,11 @@ from tqdm import tqdm
 import os
 from datetime import datetime
 
-from humob_model import HuMobModel
-from humob_dataset import create_humob_loaders
+from src.models.humob_model import HuMobModel
+from src.data.dataset import create_humob_loaders
 
 # 🔬 MLflow - Import do tracker personalizado (ADICIONE)
-from mlflow_utils import HuMobMLflowTracker
+from src.utils.mlflow_tracker import HuMobMLflowTracker
 
 
 def load_checkpoint_safe(checkpoint_path: str, device: torch.device):
@@ -95,7 +95,7 @@ def finetune_model(
     # 3. Cria loaders para cidade alvo com dados de fine-tuning
     print(f"📊 Criando datasets para cidade {target_city}...")
     
-    from humob_dataset import HuMobNormalizedDataset
+    from src.data.dataset import HuMobNormalizedDataset
     from torch.utils.data import DataLoader
     
     # Dataset de treino (dias 0.0-0.8 da cidade alvo)
@@ -425,7 +425,7 @@ def compare_models_performance(
         comp_run_id = mlflow_tracker.start_comparison_run(checkpoints)
         print(f"🔬 MLflow comparison run iniciado: {comp_run_id}")
     
-    from humob_training import evaluate_model
+    from src.training.train import evaluate_model
     
     results = {}
     

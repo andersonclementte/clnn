@@ -6,10 +6,10 @@ from datetime import datetime
 import os
 
 # Importa funções necessárias
-from humob_training import evaluate_model
-from humob_pipeline import generate_humob_submission
+from src.training.train import evaluate_model
+from src.training.pipeline import generate_humob_submission
 # 🔬 MLflow imports
-from mlflow_utils import setup_mlflow_for_humob, get_experiment_summary_for_paper
+from src.utils.mlflow_tracker import setup_mlflow_for_humob, get_experiment_summary_for_paper
 
 
 def evaluate_all_models_with_mlflow(

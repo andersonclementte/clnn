@@ -36,13 +36,13 @@ warnings.filterwarnings('ignore')
 
 # Importa módulos locais (assumindo que estão no mesmo diretório)
 try:
-    from humob_model import HuMobModel, discretize_coordinates
-    from humob_dataset import create_humob_loaders, create_test_loader
-    from humob_training import compute_cluster_centers, train_humob_model, evaluate_model
-    from humob_pipeline import run_full_pipeline, generate_humob_submission
-    from humob_finetuning import finetune_model, sequential_finetuning, compare_models_performance  # 🆕 NOVO!
-    from mlflow_utils import setup_mlflow_for_humob, get_experiment_summary_for_paper  # 🔬 MLflow
-    from pytorch_compatibility import load_checkpoint_safe, check_pytorch_version_compatibility  # 🔧 Compatibility
+    from src.models.humob_model import HuMobModel, discretize_coordinates
+    from src.data.dataset import create_humob_loaders, create_test_loader
+    from src.training.train import compute_cluster_centers, train_humob_model, evaluate_model
+    from src.training.pipeline import run_full_pipeline, generate_humob_submission
+    from src.training.finetune import finetune_model, sequential_finetuning, compare_models_performance  # 🆕 NOVO!
+    from src.utils.mlflow_tracker import setup_mlflow_for_humob, get_experiment_summary_for_paper  # 🔬 MLflow
+    from src.utils.pytorch_compat import load_checkpoint_safe, check_pytorch_version_compatibility  # 🔧 Compatibility
 except ImportError as e:
     print(f"❌ Erro importando módulos: {e}")
     print("📋 Certifique-se de que os arquivos estão no mesmo diretório:")
@@ -595,7 +595,7 @@ def main():
         pass
     
     # Configuração do arquivo (AJUSTE AQUI)
-    parquet_file = "humob_all_cities_v2_normalized.parquet"
+    parquet_file = "data/processed/humob_all_cities_v2_normalized.parquet"
     
     print("\n🎯 HUMOB CHALLENGE - PIPELINE COM FINE-TUNING + MLFLOW")
     print("=" * 70)

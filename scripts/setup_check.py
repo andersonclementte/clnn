@@ -66,7 +66,7 @@ def test_custom_modules():
     print("\n🧪 Testando módulos customizados...")
     
     try:
-        from external_information import ExternalInformationFusionNormalized, ExternalInformationDense
+        from src.models.external_info import ExternalInformationFusionNormalized, ExternalInformationDense
         print("✅ external_information.py - importado com sucesso")
         
         # Teste básico
@@ -78,7 +78,7 @@ def test_custom_modules():
         return False
     
     try:
-        from partial_information import CoordLSTM
+        from src.models.partial_info import CoordLSTM
         print("✅ partial_information.py - importado com sucesso")
         
         # Teste básico
@@ -98,8 +98,8 @@ def test_model_creation():
     try:
         # Imports
         import torch
-        from external_information import ExternalInformationFusionNormalized, ExternalInformationDense
-        from partial_information import CoordLSTM
+        from src.models.external_info import ExternalInformationFusionNormalized, ExternalInformationDense
+        from src.models.partial_info import CoordLSTM
         
         # Dados de teste
         batch_size = 4

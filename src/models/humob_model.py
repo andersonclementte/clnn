@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from external_information import ExternalInformationFusionNormalized, ExternalInformationDense
-from partial_information import CoordLSTM
+from src.models.external_info import ExternalInformationFusionNormalized, ExternalInformationDense
+from src.models.partial_info import CoordLSTM
 
 
 class WeightedFusion(nn.Module):

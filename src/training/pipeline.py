@@ -6,9 +6,9 @@ from tqdm import tqdm
 import os
 from datetime import datetime
 
-from humob_model import HuMobModel, discretize_coordinates
-from humob_dataset import HuMobNormalizedDataset
-from humob_training import compute_cluster_centers, train_humob_model, evaluate_model
+from src.models.humob_model import HuMobModel, discretize_coordinates
+from src.data.dataset import HuMobNormalizedDataset
+from src.training.train import compute_cluster_centers, train_humob_model, evaluate_model
 
 
 def run_full_pipeline(
