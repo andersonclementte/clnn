@@ -1,0 +1,20 @@
+cat > ~/humob_project/.dockerignore << 'EOF'
+/data/
+/experiments/
+/outputs/
+/mlruns/
+/.mlruns/
+**/wandb/
+**/*.pt
+**/*.npy
+**/*.pkl
+
+__pycache__/
+*.py[cod]
+/.git/
+/.vscode/
+/.idea/
+*.log
+.DS_Store
+Thumbs.db
+EOF
