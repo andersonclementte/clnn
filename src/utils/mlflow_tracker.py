@@ -238,15 +238,21 @@ class HuMobMLflowTracker:
         """
         if model_type == "pytorch" and model is not None:
             mlflow.pytorch.log_model(
-                model,
-                "model",
-                requirements_txt=None,
-                extra_files=[checkpoint_path] if os.path.exists(checkpoint_path) else None
+                pytorch_model=model,
+                artifact_path="model",
+                pip_requirements=[                  # ✅ CORRETO: pip_requirements em vez de requirements_txt
+                    f"torch=={torch.__version__}",
+                    "numpy>=1.21.0", 
+                    "pandas>=1.3.0", 
+                    "pyarrow>=5.0.0",
+                    "scikit-learn>=1.0.0"
+                ]
+                # ✅ REMOVIDO: requirements_txt=None, extra_files=[...]
             )
         
         # Log do checkpoint como artefato
         if os.path.exists(checkpoint_path):
-            mlflow.log_artifact(checkpoint_path, "checkpoints")
+            mlflow.log_artifact(checkpoint_path, artifact_path="checkpoints")  # ✅ Especifica artifact_path
     
     def create_training_plots(self, train_losses: list, val_losses: list, 
                             fusion_weights_history: list = None):
