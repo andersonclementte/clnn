@@ -13,8 +13,13 @@ import matplotlib.pyplot as plt
 from src.models.humob_model import HuMobModel, discretize_coordinates
 from src.data.dataset import create_humob_loaders, create_test_loader
 
-# 🔬 MLflow - Import do tracker personalizado
+# MLflow - Import do tracker personalizado
 from src.utils.mlflow_tracker import HuMobMLflowTracker
+from src.utils.simple_checkpoint import (
+    save_checkpoint, 
+    load_checkpoint, 
+    get_latest_checkpoint
+)
 
 
 def compute_cluster_centers(
@@ -110,6 +115,24 @@ def compute_cluster_centers(
     return torch.from_numpy(centers)
 
 
+def _cleanup_old_checkpoints(keep_n: int = 3, checkpoint_dir: str = "outputs/models/checkpoints/"):
+    """Remove checkpoints antigos, mantendo apenas os últimos N."""
+    from pathlib import Path
+    
+    checkpoints = sorted(
+        Path(checkpoint_dir).glob("checkpoint_epoch_*.pt"),
+        key=lambda p: p.stat().st_mtime
+    )
+    
+    # Remove os mais antigos
+    for old_checkpoint in checkpoints[:-keep_n]:
+        try:
+            old_checkpoint.unlink()
+            print(f"🗑️ Checkpoint antigo removido: {old_checkpoint.name}")
+        except Exception as e:
+            print(f"⚠️ Erro removendo {old_checkpoint.name}: {e}")
+
+
 def train_humob_model(
     parquet_path: str,
     cluster_centers: torch.Tensor,
@@ -121,13 +144,18 @@ def train_humob_model(
     sequence_length: int = 24,
     n_users: int = 100_000,
     save_path: str = "humob_model.pt",
-    # 🔬 MLflow - Parâmetro para tracker (ADICIONE)
-    mlflow_tracker: HuMobMLflowTracker = None
+    mlflow_tracker: HuMobMLflowTracker = None,
+    resume_from_checkpoint: bool = True,
+    checkpoint_every_n_epochs: int = 1,
+    keep_last_n_checkpoints: int = 3
 ):
     """Treina o modelo HuMob com dados normalizados e tracking MLflow."""
     print("🏋️ Iniciando treinamento do modelo HuMob...")
     
-    # 🔬 MLflow - Configuração do experimento (ADICIONE)
+    # Inicializa run_id antes do if
+    run_id = None
+    
+    # Configuração do experimento
     if mlflow_tracker is not None:
         config = {
             "n_clusters": cluster_centers.shape[0],
@@ -138,7 +166,7 @@ def train_humob_model(
             "n_users": n_users,
             "optimizer": "AdamW",
             "scheduler": "ReduceLROnPlateau", 
-            "device": device,
+            "device": str(device),
             "cities": cities
         }
         run_id = mlflow_tracker.start_base_training_run(config)
@@ -152,7 +180,7 @@ def train_humob_model(
         sequence_length=sequence_length
     )
     
-    # 2. Instancia modelo CORRIGIDO
+    # 2. Instancia modelo
     model = HuMobModel(
         n_users=n_users,
         n_cities=4,  # A, B, C, D
@@ -175,19 +203,33 @@ def train_humob_model(
                 total += p.grad.detach().float().norm(2).item() ** 2
         return (total ** 0.5)
     
+    # Verifica se deve retomar
+    start_epoch = 0
+    if resume_from_checkpoint:
+        latest_checkpoint = get_latest_checkpoint()
+        if latest_checkpoint:
+            print(f"🔄 Retomando treinamento do checkpoint: {latest_checkpoint}")
+            start_epoch = load_checkpoint(model, optimizer, latest_checkpoint)
+            start_epoch += 1  # Começa da próxima época
+            print(f"🚀 Continuando da época {start_epoch}/{n_epochs}")
+        else:
+            print("📝 Nenhum checkpoint encontrado, iniciando do zero")
+    
     best_val_loss = float('inf')
     train_losses = []
     val_losses = []
-    # 🔬 MLflow - Histórico dos pesos da fusão (ADICIONE)
     fusion_weights_history = []
     
     print(f"Parâmetros treináveis: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
     
-    for epoch in range(n_epochs):
+    for epoch in range(start_epoch, n_epochs):
         # === TREINO ===
         model.train()
         train_loss_epoch = 0
         train_count = 0
+        
+        # Inicializa variáveis que podem não ser definidas
+        post_clip_norm = 0.0
         
         print(f"\n🔄 Época {epoch+1}/{n_epochs}")
         train_pbar = tqdm(train_loader, desc=f'Treino {cities}')
@@ -203,7 +245,7 @@ def train_humob_model(
                 
                 optimizer.zero_grad(set_to_none=True)
                 
-                # Forward CORRIGIDO: usar parâmetros normalizados
+                # Forward
                 pred = model.forward_single_step(uid, d_norm, t_sin, t_cos, city, poi_norm, coords_seq)
                 target = target_coords.squeeze(1)
                 
@@ -278,7 +320,7 @@ def train_humob_model(
         train_losses.append(avg_train_loss)
         val_losses.append(avg_val_loss)
         
-        # 🔬 MLflow - Captura pesos da fusão (ADICIONE)
+        # Captura pesos da fusão
         w_r = model.weighted_fusion.w_r.item()
         w_e = model.weighted_fusion.w_e.item()
         fusion_weights = {"w_r": w_r, "w_e": w_e}
@@ -287,17 +329,43 @@ def train_humob_model(
         print(f"Treino: {avg_train_loss:.4f} | Val: {avg_val_loss:.4f}")
         print(f"Fusion weights: w_r={w_r:.3f}, w_e={w_e:.3f}")
         
-        # 🔬 MLflow - Log métricas da época (ADICIONE)
+        # MLflow logging
         if mlflow_tracker is not None:
             mlflow_tracker.log_training_metrics(
                 epoch=epoch,
                 train_loss=avg_train_loss,
                 val_loss=avg_val_loss,
                 fusion_weights=fusion_weights,
-                grad_norm=post_clip_norm if 'post_clip_norm' in locals() else None,
+                grad_norm=post_clip_norm,
                 learning_rate=optimizer.param_groups[0]["lr"]
             )
         
+        # Salva a cada N épocas
+        if (epoch + 1) % checkpoint_every_n_epochs == 0:
+            save_checkpoint(
+                model=model,
+                optimizer=optimizer,
+                epoch=epoch,
+                val_loss=avg_val_loss,
+                save_dir="outputs/models/checkpoints/",
+                filename=f"checkpoint_epoch_{epoch+1}.pt",
+                extra_data={
+                    'centers': cluster_centers.cpu().numpy(),
+                    'config': {
+                        'n_users': n_users,
+                        'n_cities': 4,
+                        'sequence_length': sequence_length,
+                        'prediction_steps': 1,
+                        'n_clusters': cluster_centers.shape[0]
+                    },
+                    'train_loss': avg_train_loss,
+                    'mlflow_run_id': run_id  # Agora sempre definido
+                }
+            )
+            
+            # Remove checkpoints antigos
+            _cleanup_old_checkpoints(keep_last_n_checkpoints)
+
         # Learning rate scheduling
         scheduler.step(avg_val_loss)
         
@@ -319,15 +387,13 @@ def train_humob_model(
                 'train_loss': avg_train_loss,
                 'val_loss': avg_val_loss,
                 'epoch': epoch,
-                # 🔬 MLflow - Adiciona metadados do experimento (ADICIONE)
-                'mlflow_run_id': run_id if mlflow_tracker else None
+                'mlflow_run_id': run_id  # Agora sempre definido
             }, save_path)
             
-            # 🔬 MLflow - Log modelo como artefato (ADICIONE)
             if mlflow_tracker is not None:
                 mlflow_tracker.log_model_artifact(model, save_path)
     
-    # 🔬 MLflow - Log plots finais (ADICIONE)
+    # MLflow plots finais
     if mlflow_tracker is not None:
         mlflow_tracker.create_training_plots(
             train_losses=train_losses,
@@ -348,7 +414,6 @@ def evaluate_model(
     cities: list[str] = ["D"],
     n_samples: int = 5000,
     sequence_length: int = 24,
-    # 🔬 MLflow - Parâmetro para tracker (ADICIONE)
     mlflow_tracker: HuMobMLflowTracker = None,
     model_type: str = "zero_shot"
 ):
@@ -404,7 +469,7 @@ def evaluate_model(
                 total_loss += loss.item() * target.size(0)
                 total_samples += target.size(0)
                 
-                # Erro em células (após discretização)
+                # Erro em células
                 pred_discrete = discretize_coordinates(pred)
                 target_discrete = discretize_coordinates(target)
                 cell_error = torch.abs(pred_discrete - target_discrete).float().mean(dim=1)
@@ -426,7 +491,7 @@ def evaluate_model(
     print(f"  Erro médio em células: {avg_cell_error:.2f}")
     print(f"  Amostras avaliadas: {total_samples:,}")
     
-    # 🔬 MLflow - Log resultados da avaliação (ADICIONE)
+    # MLflow logging
     if mlflow_tracker is not None:
         for city in cities:
             mlflow_tracker.log_evaluation_results(
