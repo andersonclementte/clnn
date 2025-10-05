@@ -533,31 +533,33 @@ def compare_models_performance(
 # Função principal para execução completa
 def main():
     """Execução do fine-tuning completo com MLflow."""
-    
-    # MLflow - Configura tracker
+    import os, glob
+    from src.utils.config import load_config
+
     mlflow_tracker = HuMobMLflowTracker(experiment_name="HuMob_Challenge_Paper")
-    
-    # Configurações - AJUSTE AQUI
-    parquet_file = "humob_all_cities_v2_normalized.parquet"
-    base_model = "humob_model_A.pt"  # Modelo treinado apenas em A
-    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
+
     print("🎯 FINE-TUNING HUMOB CHALLENGE COM MLFLOW")
     print("=" * 60)
-    
-    # Verifica arquivos
-    import os
+
+    # Lê a mesma config do treino
+    cfg = load_config("config/humob_config_15days.yaml")
+    parquet_file = os.path.join(cfg["data"]["processed_data_path"], cfg["data"]["parquet_file"])
     if not os.path.exists(parquet_file):
         print(f"❌ Dados não encontrados: {parquet_file}")
         return
-    
-    if not os.path.exists(base_model):
-        print(f"❌ Modelo base não encontrado: {base_model}")
-        print("Execute primeiro o treinamento com run_humob.py")
+
+    # Descobre o melhor checkpoint do treino (ou troque por um path fixo se preferir)
+    cands = sorted(glob.glob("outputs/models/ckpt-best-*.pt"))
+    if not cands:
+        print("❌ Nenhum checkpoint encontrado em outputs/models/ckpt-best-*.pt")
+        print("   Rode primeiro o treino base.")
         return
-    
-    # Fine-tuning sequencial
+    base_model = cands[-1]
+
+    # Garante que o sequence_length bate com o treino
+    seq_len = cfg["model"]["sequence_length"]
+
     results = sequential_finetuning(
         parquet_path=parquet_file,
         base_checkpoint=base_model,
@@ -565,37 +567,29 @@ def main():
         device=device,
         n_epochs_per_city=3,
         learning_rate=5e-5,
-        sequence_length=24,
-        # MLflow - Passa tracker
-        mlflow_tracker=mlflow_tracker
+        sequence_length=seq_len,
+        mlflow_tracker=mlflow_tracker,
     )
-    
-    # Comparação de performance se tudo deu certo
+
     successful = sum(1 for r in results.values() if r['status'] == 'success')
     if successful > 0:
-        print(f"\n🔍 COMPARANDO PERFORMANCE...")
-        
-        # Monta lista de checkpoints para comparar
+        print("\n🔍 COMPARANDO PERFORMANCE...")
         checkpoints = {'Zero-shot (A apenas)': base_model}
-        
         for city, result in results.items():
             if result['status'] == 'success':
                 checkpoints[f'Fine-tuned {city}'] = result['checkpoint']
-        
+
         comparison = compare_models_performance(
             parquet_path=parquet_file,
             checkpoints=checkpoints,
             device=device,
             n_samples=3000,
-            # MLflow - Passa tracker
-            mlflow_tracker=mlflow_tracker
+            mlflow_tracker=mlflow_tracker,
         )
-        
-        print("\n🎉 FINE-TUNING COMPLETO!")
-        print("Agora você pode usar os modelos fine-tuned para submissão.")
-        print("🔬 Dados salvos no MLflow - execute 'mlflow ui' para visualizar")
-    
+
+        print("\n🎉 FINE-TUNING COMPLETO! Veja o MLflow.")
     return results
+
 
 
 if __name__ == "__main__":
